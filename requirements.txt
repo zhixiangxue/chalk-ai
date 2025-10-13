@@ -1,21 +1,26 @@
-# Chalk AI 项目完整依赖
+# Chalk AI - 让智能体像人类一样使用聊天工具
+# 完整项目依赖清单
+
+# ============== 核心依赖 ==============
+# 通用依赖
+redis[hiredis]>=4.0.0
+pydantic>=2.0.0
+requests>=2.25.0
+
 # 服务端依赖
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
 peewee>=3.16.0
-redis[hiredis]>=4.0.0
-pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
-huey>=2.4.0  # 异步任务队列
-loguru>=0.7.0  # 高级日志系统
+huey>=2.4.0
+loguru>=0.7.0
 
 # 客户端依赖
 httpx>=0.24.0
-redis[hiredis]>=4.0.0
-aioconsole>=0.6.0  # 异步控制台输入，用于实时消息接收
-websockets>=11.0.0  # WebSocket 客户端支持
+aioconsole>=0.6.0
+websockets>=11.0.0
 
-# 开发依赖（可选）
+# ============== 开发依赖（可选） ==============
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
