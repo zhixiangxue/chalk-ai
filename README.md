@@ -1,10 +1,10 @@
-# 🎯 Chalk AI
+# 🎯 Chalk
 
-> 让智能体像人类一样自然使用聊天工具 - 开发者友好的实时通信框架
+> 让智能体像人类一样自然的使用聊天工具 - 为智能体的实时通信框架
 
 <div align="center">
 
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Redis](https://img.shields.io/badge/Redis-4.0+-red.svg)](https://redis.io/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-Real--time-orange.svg)](https://websockets.readthedocs.io/)
@@ -13,9 +13,11 @@
 
 </div>
 
-## 🚀 什么是 Chalk AI？
 
-Chalk AI 是一个**极简但强大**的实时聊天框架，专为智能体间通信设计。就像微信群聊，但专为 AI 智能体优化：
+
+## 👏 Chalk 是什么？
+
+Chalk 是一个**极简**的实时聊天框架，专为智能体间通信设计。就像人类的微信，Chalk 专为 AI 智能体打造：
 
 - 🤖 **智能体优先**：专为 AI Agent 间通信设计（当然人类也可参与）
 - 💬 **自然交互**：`chat.send("Hello")`、`message.reply("Hi!")`，API 如聊天般直观
@@ -23,17 +25,26 @@ Chalk AI 是一个**极简但强大**的实时聊天框架，专为智能体间�
 - 🎯 **极简风格**：几行代码就能为你的智能体拉一个“群”，打破信息孤岛
 - 🔌 **事件驱动**：`@client.on("message")` 装饰器，优雅处理各种消息
 
-## ✨ 核心特性
 
-### 🎪 极简 API 设计
+
+## 🙅🏻‍♀️ Chalk 不是...
+
+- **不是智能体编程框架** - 我们不提供Agent定义、任务规划、工具调用等AI智能体开发功能
+- **不是多智能体协作平台** - 我们不处理智能体间的协商、决策、任务分配等复杂逻辑
+- **不是LLM应用框架** - 我们不包含提示词管理、模型调用、RAG等LLM相关功能
+- **不是工作流引擎** - 我们不提供流程编排、任务调度、状态管理等工作流功能
+- **不是AI开发平台** - 我们只专注于实时通信，AI能力需要你自己集成
+
+
+
+## 🤗 为什么选择 Chalk？
 ```python
-# 3 行代码接入聊天系统
-client = Client("localhost:8000")
-await client.connect(name="我的智能体")
-await client.create_chat("XXX大客户服务内部支持群").send("大家好！这里是XXX大客户服务内部支持群~")
+# 仅2行代码让你的智能体可以聊天对话
+async with Client("localhost:8000").with_agent(name="我是Agent-X") as client:
+    await client.create_chat("XXX大客户服务内部支持群").send("大家好！这里是XXX大客户服务内部支持群~")
 ```
 
-### 🔥 实时事件处理
+### 🔥 实时消息处理
 ```python
 @client.on("message")
 async def handle_message(message):
@@ -47,15 +58,12 @@ async def handle_message(message):
 
 ### 🚀 智能体生态
 - **无缝协作**：多个智能体在同一聊天中实时交流
-- **框架无关**：与任何 AI 智能体框架无关，使用你喜欢的框架开发智能体
-- **人机协作**：智能体和人类可在同一聊天中交流，人机协作就应该像聊天一样自然
+- **框架无关**：与任何 AI 智能体框架无关，使用你喜欢的任何框架开发智能体
+- **人机协作**：智能体和人类可在同一聊天中交流，人机协作就应该像微信聊天一样自然
 
-### 🏗️ 技术架构
-- **实时通信**：WebSocket + Redis
-- **持久化存储**：Redis + SQLite
-- **异步优化**：全异步设计，高并发支持
 
-## 📦 快速开始
+
+## 📦 快速开始~
 
 ### 1. 安装依赖
 ```bash
@@ -64,13 +72,13 @@ cd chalk-ai
 pip install -r requirements.txt
 ```
 
-### 2. 启动服务器
+### 2. 启动Chalk服务器
 ```bash
 python chalk-server.py
 ```
 服务器将在 `http://localhost:8000` 启动
 
-### 3. 为你的智能体们创建群聊
+### 3. 为智能体增加聊天功能
 ```python
 import asyncio
 from chalk.client import Client
@@ -103,10 +111,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### 4. 运行客户端
-```bash
-python your_agent_client.py
-```
+
 
 ## 🎯 使用场景
 
@@ -157,6 +162,8 @@ async def handle_message(message):
 
 通过这种方式，**多个智能体配合人类**，完成复杂的业务流程，所有上下文都在聊天记录中，清晰可追溯。
 
+
+
 ## 🔧 配置
 
 ### 环境变量
@@ -167,6 +174,8 @@ SQLITE_PATH=chalk.db
 API_HOST=0.0.0.0
 API_PORT=8000
 ```
+
+
 
 ## 📚 API 参考
 
@@ -208,6 +217,7 @@ API_PORT=8000
 </tr>
 </table>
 
+
 ## 🤝 贡献指南
 
 我们欢迎所有形式的贡献！
@@ -218,9 +228,13 @@ API_PORT=8000
 4. **推送到分支** (`git push origin feature/AmazingFeature`)
 5. **开启 Pull Request**
 
+
+
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+
 
 ## 🔗 相关链接
 
@@ -235,6 +249,6 @@ API_PORT=8000
 
 **⭐ 如果这个项目对你有帮助，请给一个 Star！⭐**
 
-*让智能体像人类一样自然交流，从 Chalk AI 开始。*
+*Chalk，让智能体像人类一样自然交流*
 
 </div>
