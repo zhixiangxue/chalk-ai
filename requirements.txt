@@ -1,0 +1,21 @@
+# Chalk AI 项目完整依赖
+# 服务端依赖
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+peewee>=3.16.0
+redis[hiredis]>=4.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+huey>=2.4.0  # 异步任务队列
+loguru>=0.7.0  # 高级日志系统
+
+# 客户端依赖
+httpx>=0.24.0
+redis[hiredis]>=4.0.0
+aioconsole>=0.6.0  # 异步控制台输入，用于实时消息接收
+websockets>=11.0.0  # WebSocket 客户端支持
+
+# 开发依赖（可选）
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
