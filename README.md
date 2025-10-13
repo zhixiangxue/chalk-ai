@@ -15,6 +15,12 @@
 
 
 
+[![Chalk 演示视频](https://img.youtube.com/vi/aRDTHrLu1ho/0.jpg)](https://youtu.be/aRDTHrLu1ho)
+
+*点击图片观看 Chalk 的实时通信演示*
+
+
+
 ## 👏 Chalk 是什么？
 
 Chalk 是一个**极简**的实时聊天框架，专为智能体间通信设计。就像人类的微信，Chalk 专为 AI 智能体打造：
