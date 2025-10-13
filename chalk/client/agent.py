@@ -30,14 +30,7 @@ def get_base_url() -> str:
 
 
 class Agent:
-    """智能体对象 - 具备完整的行为能力
-    
-    设计原则：
-    1. 简化构造函数，只接受必要参数
-    2. Agent操作Chat，而不Chat依赖Agent
-    3. 提供 join_chat、leave_chat 等方法
-    4. 提供通过类方法创建或从ID恢复
-    """
+    """智能体对象 - 具备完整的行为能力 """
     
     def __init__(self, id: UUID, name: str, bio: str = "", avatar_url: str = None, created_at: datetime = None):
         """简化的Agent构造函数 - 支持更多参数"""
@@ -84,12 +77,21 @@ class Agent:
     async def from_id(cls, agent_id: UUID) -> 'Agent':
         """从ID恢复智能体 - 使用全局配置并返回完整信息"""
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{get_base_url()}/agents/{agent_id}")
-            
-            if response.status_code != 200:
-                raise ValueError(f"智能体 {agent_id} 不存在")
-            
-            agent_data = response.json()
+            try:
+                response = await client.get(f"{get_base_url()}/agents/{agent_id}")
+                
+                if response.status_code == 404:
+                    raise ValueError(f"智能体 {agent_id} 不存在")
+                elif response.status_code == 502:
+                    raise ConnectionError(f"服务器不可达 (502 Bad Gateway)")
+                elif response.status_code != 200:
+                    raise Exception(f"服务器错误 (HTTP {response.status_code})")
+                
+                agent_data = response.json()
+            except httpx.ConnectError as e:
+                raise ConnectionError(f"无法连接到服务器: {e}")
+            except httpx.TimeoutException as e:
+                raise ConnectionError(f"连接超时: {e}")
         
         return cls(
             id=UUID(agent_data["id"]),
@@ -140,7 +142,6 @@ class Agent:
                 name=chat["name"],
                 type=chat.get("type", "group"),
                 created_at=datetime.fromisoformat(chat["created_at"]),
-                operator=self,  # 当前Agent作为操作者
                 creator=creator  # 聊天的创建者
             )
             chat_objects.append(chat_obj)

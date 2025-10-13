@@ -99,13 +99,13 @@ class RedisClient:
     
     # ======== Agent 在线状态管理 ========
     
-    async def set_agent_online(self, agent_id: str, ttl: int = 300) -> bool:
+    async def set_agent_online(self, agent_id: str, ttl: int = 3600) -> bool:
         """
         设置 Agent 在线状态
         
         Args:
             agent_id: Agent ID
-            ttl: 过期时间（秒）
+            ttl: 过期时间（秒），默认1小时
             
         Returns:
             bool: 是否设置成功

@@ -18,13 +18,7 @@ if TYPE_CHECKING:
 
 
 class Message:
-    """消息对象 - 具备完整的行为能力
-    
-    设计原则：
-    1. 简化构造函数，只接受必要参数
-    2. reply方法需要Agent参数，更自然
-    3. 不依赖客户端对象，直接调用HTTP API
-    """
+    """消息对象 - 具备完整的行为能力 """
     
     def __init__(self, id: UUID, chat_id: UUID, sender_id: UUID, content: str,
                  type: str = "text", mentions: List[UUID] = None, parent_id: UUID = None, 
@@ -40,6 +34,13 @@ class Message:
         # 兼容两种时间字段
         self.created_at = created_at or timestamp or datetime.now()
         self.timestamp = self.created_at  # 保持兼容性
+        
+        # Client引用（由Client设置）
+        self.client: Optional['Client'] = None
+    
+    def bind_client(self, client: 'Client'):
+        """绑定client（由Client调用）"""
+        self.client = client
     
     @property
     def base_url(self) -> str:
@@ -51,22 +52,31 @@ class Message:
         from .chat import Chat
         from .agent import Agent
         
+        # 准备请求头
+        headers = {}
+        if self.client and self.client.agent:
+            headers["X-Agent-ID"] = str(self.client.agent.id)
+        
         # 从服务端获取 chat 信息
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.base_url}/chats/{self.chat_id}")
+            response = await client.get(f"{self.base_url}/chats/{self.chat_id}", headers=headers)
             response.raise_for_status()
             chat_data = response.json()
         
         # 获取创建者
         creator = await Agent.from_id(UUID(chat_data["creator_id"]))
         
-        return Chat(
+        # 创建Chat对象，绑定client
+        chat = Chat(
             id=UUID(chat_data["id"]),
             name=chat_data["name"],
             type=chat_data.get("type", "group"),
             created_at=datetime.fromisoformat(chat_data["created_at"]),
-            creator=creator
+            creator=creator,
+            client=self.client
         )
+        
+        return chat
     
     async def get_sender(self) -> 'Agent':
         """获取发送者"""

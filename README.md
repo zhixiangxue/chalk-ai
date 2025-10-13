@@ -224,8 +224,8 @@ API_PORT=8000
 
 ## 🔗 相关链接
 
-- [完整 API 文档](docs/client.md)
-- [部署指南](docs/deployment.md)
+- [开发文档](docs/client.md)
+- [部署指南](docs/server.md)
 - [示例项目](examples/)
 - [问题反馈](https://github.com/zhixiangxue/chalk-ai/issues)
 

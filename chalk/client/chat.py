@@ -18,35 +18,24 @@ if TYPE_CHECKING:
 
 
 class Chat:
-    """聊天对象 - 具备完整的行为能力
-    
-    设计原则：
-    1. 简化构造函数，只接受必要参数
-    2. 通过类方法创建或从ID恢复时绑定Agent
-    3. operator 用于所有需要当前用户身份的操作
-    4. creator 用于管理操作（添加/移除成员等）
-    5. send方法支持Message对象和字符串
-    6. 成员操作接受Agent对象而不是ID
-    """
+    """聊天对象 - 具备完整的行为能力 """
     
     def __init__(self, id: UUID, name: str = None, type: str = "group", created_at: datetime = None, 
-                 operator: Agent = None, creator: Agent = None, client: Optional['Client'] = None):
-        """简化构造函数 - 使用全局配置并绑定Agent
+                 creator: Agent = None, client: Optional['Client'] = None):
+        """简化构造函数
         
         Args:
             id: 聊天ID
             name: 聊天名称
             type: 聊天类型
             created_at: 创建时间
-            operator: 当前操作的Agent（用于发送消息等个人操作）
             creator: 创建者Agent（用于管理操作）
-            client: Client 对象引用（用于 WebSocket 发送消息）
+            client: Client 对象引用（用于获取当前agent和WebSocket发送消息）
         """
         self.id = id
         self.name = name
         self.type = type
         self.created_at = created_at or datetime.now()
-        self.operator = operator  # 当前操作的Agent
         self.creator = creator  # 创建者Agent
         self.client: Optional['Client'] = client  # Client 引用
         self._members_cache = None
@@ -58,7 +47,7 @@ class Chat:
     
     @classmethod
     async def create(cls, name: str, creator: Agent, chat_type: str = "group", members: List[Agent] = None) -> 'Chat':
-        """创建新聊天 - 使用全局配置并绑定Agent
+        """创建新聊天
         
         Args:
             name: 聊天名称
@@ -82,22 +71,16 @@ class Chat:
         return cls(
             id=UUID(chat_data["id"]),
             name=chat_data["name"],
-            operator=creator,  # 当前操作者（创建者）
-            creator=creator  # 创建者
+            creator=creator
         )
     
     @classmethod
     async def from_id(cls, chat_id: UUID, operator: Agent) -> 'Chat':
-        """从ID恢复聊天 - 使用全局配置并绑定Agent
+        """从ID恢复聊天
         
         Args:
             chat_id: 聊天ID
-            operator: 请求者Agent（用于验证权限并作为当前操作者）
-        
-        注意:
-            - 需要传入operator进行权限验证（X-Agent-ID header）
-            - Chat对象的operator字段绑定请求者（用于个人操作）
-            - Chat对象的creator字段绑定创建者（用于管理操作）
+            operator: 请求者Agent（用于验证权限）
         """
         headers = {"X-Agent-ID": str(operator.id)}
         
@@ -112,19 +95,18 @@ class Chat:
         return cls(
             id=UUID(chat_data["id"]),
             name=chat_data["name"],
-            operator=operator,  # 当前操作的Agent（请求者）
-            creator=creator  # 创建者Agent
+            creator=creator
         )
     
     async def send(self, content: Union[str, Message], mentions: List[Agent] = None) -> Message:
-        """发送消息（使用当前操作者身份）
+        """发送消息（使用当前client的agent身份）
         
         Args:
             content: 消息内容（字符串）或消息对象
             mentions: 提及的代理列表
         """
-        if not self.operator:
-            raise ValueError("Chat对象未绑定操作者，无法发送消息")
+        if not self.client or not self.client.agent:
+            raise ValueError("聊天对象未绑定client，无法发送消息")
         
         if isinstance(content, Message):
             # 如果传入的是Message对象，直接使用其内容
@@ -180,7 +162,7 @@ class Chat:
         temp_message = Message(
             id=uuid4(),  # 临时 ID
             chat_id=self.id,
-            sender_id=self.operator.id,
+            sender_id=self.client.agent.id,
             content=content,
             type="text",
             mentions=mentions,
@@ -192,7 +174,7 @@ class Chat:
     
     async def _send_via_http(self, content: str, mentions: List[UUID], parent_id: Optional[UUID]) -> Message:
         """通过 HTTP 发送消息（向后兼容）"""
-        # 直接调用HTTP接口发送消息（使用当前操作者身份）
+        # 直接调用HTTP接口发送消息（使用client的agent身份）
         data = {
             "chat_id": str(self.id),
             "content": content,
@@ -201,7 +183,7 @@ class Chat:
         if parent_id:
             data["parent_id"] = str(parent_id)
         
-        headers = {"X-Agent-ID": str(self.operator.id)}
+        headers = {"X-Agent-ID": str(self.client.agent.id)}
         
         async with httpx.AsyncClient() as client:
             response = await client.post(f"{self.base_url}/messages", json=data, headers=headers)
@@ -317,18 +299,16 @@ class Chat:
     
     async def leave(self):
         """离开聊天（如果是创建者则删除聊天）"""
-        if not self.operator:
-            raise ValueError("Chat对象未绑定操作者，无法离开聊天")
+        if not self.client or not self.client.agent:
+            raise ValueError("聊天对象未绑定client，无法离开聊天")
         
-        headers = {"X-Agent-ID": str(self.operator.id)}
+        headers = {"X-Agent-ID": str(self.client.agent.id)}
         
         async with httpx.AsyncClient() as client:
-            response = await client.post(f"{self.base_url}/chats/{self.id}/leave", headers=headers)
+            response = await client.delete(f"{self.base_url}/chats/{self.id}/members/{self.client.agent.id}", headers=headers)
             response.raise_for_status()
-            result = response.json()
         
-        # 根据返回判断是退出还是删除
-        return result.get("status") == "deleted"
+        return True
     
     async def history(self, page: int = 1, page_size: int = 100) -> List[Message]:
         """获取聊天历史消息（支持分页）"""

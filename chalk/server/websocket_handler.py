@@ -67,8 +67,21 @@ class WebSocketHandler:
             )
             self.active_subscribers[agent_id] = instant_message_task
             
-            # 启动客户端消息接收循环
-            await self._handle_client_messages(websocket, agent_id)
+            # 启动心跳任务定期刷新在线状态
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(agent_id)
+            )
+            
+            try:
+                # 启动客户端消息接收循环
+                await self._handle_client_messages(websocket, agent_id)
+            finally:
+                # 取消心跳任务
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
             
         except WebSocketDisconnect:
             logger.info(f"Agent {agent_id} WebSocket 连接断开")
@@ -115,6 +128,35 @@ class WebSocketHandler:
         await connection_manager.send_outbound_message(agent_id, ack_message)
         logger.debug(f"连接确认消息已发送: {agent_id}")
     
+    async def _heartbeat_loop(self, agent_id: str):
+        """
+        心跳循环，定期刷新Agent在线状态
+        
+        Args:
+            agent_id: 智能体ID
+        """
+        redis_client = RedisClient(self.settings.redis_url)
+        
+        try:
+            await redis_client.connect()
+            
+            while True:
+                try:
+                    # 每30秒刷新一次在线状态
+                    await asyncio.sleep(30)
+                    await redis_client.set_agent_online(agent_id)
+                    logger.debug(f"已刷新 {agent_id} 在线状态")
+                    
+                except asyncio.CancelledError:
+                    logger.debug(f"Agent {agent_id} 心跳任务已取消")
+                    break
+                except Exception as e:
+                    logger.warning(f"刷新在线状态失败 {agent_id}: {str(e)}")
+                    await asyncio.sleep(30)  # 出错后等待再试
+                    
+        finally:
+            await redis_client.disconnect()
+            
     async def _handle_offline_messages(self, agent_id: str):
         """
         补偿推送离线期间的消息
