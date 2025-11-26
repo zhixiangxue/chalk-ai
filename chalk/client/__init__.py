@@ -1,16 +1,7 @@
-"""
-Chalk AI 客户端包
-
-提供简洁易用的API来操作Chalk AI聊天系统
-"""
+"""Chalk AI Client SDK"""
 from .client import Client
-from .agent import Agent
+from .user import User
 from .chat import Chat
-from .message import Message
+from .message import Message, MessageRef
 
-__all__ = [
-    'Client',
-    'Agent',
-    'Chat', 
-    'Message',
-]
+__all__ = ['Client', 'User', 'Chat', 'Message', 'MessageRef']

@@ -2,14 +2,36 @@ from uuid import UUID
 from peewee import IntegrityError
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
+from fastapi.responses import HTMLResponse
 
 from .config import get_settings
-from .database import Database
-from .models import AgentCreate, ChatCreate, MessageCreate, Agent, Chat, Message
-from .services import MessageService, ChatService, AgentService
+from .db import Database
+from .models import UserRegister, UserAuth, ChatCreate, MessageCreate, User, Chat, Message
+from .services import MessageService, ChatService, UserService
 from .websocket_handler import websocket_handler
 
 router = APIRouter()
+
+
+@router.get("/", response_class=HTMLResponse)
+async def root():
+    """
+    根路径 - 服务状态检查
+    
+    返回:
+    - 200: 服务运行状态和项目链接（HTML）
+    """
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Chalk Server</title>
+    </head>
+    <body>
+        <p>Chalk is Running, <a href="https://github.com/zhixiangxue/chalk-ai" target="_blank">View on GitHub →</a></p>
+    </body>
+    </html>
+    """
 
 
 # 明确的依赖注入函数
@@ -24,10 +46,10 @@ async def get_db():
         await db.disconnect()
 
 
-def get_agent_service(
+def get_user_service(
         db: Database = Depends(get_db)
-) -> AgentService:
-    return AgentService(db)
+) -> UserService:
+    return UserService(db)
 
 
 def get_message_service(
@@ -47,77 +69,134 @@ def get_chat_service(
     return ChatService(db)
 
 
-@router.post("/agents", response_model=Agent)
-async def create_agent(agent: AgentCreate, service: AgentService = Depends(get_agent_service)):
+@router.post("/auth/register", response_model=User)
+async def register(user_data: UserRegister, service: UserService = Depends(get_user_service)):
     """
-    创建新的智能体(Agent)
+    用户注册
     
     HTTP调用方式:
-    POST /agents
+    POST /auth/register
     Content-Type: application/json
     Body: {
-        "name": "智能体名称",
-        "description": "智能体描述"
+        "name": "用户名",
+        "password": "密码",
+        "bio": "个人简介"
     }
     
     功能:
-    - 在系统中创建一个新的智能体
-    - 返回创建成功的智能体信息，包含生成的UUID
+    - 注册新用户账号
+    - 用户名必须唯一
+    - 密码会被加密存储
     
     返回:
-    - 200: 成功创建的Agent对象
-    - 409: 智能体名称已存在
+    - 200: 成功创建的User对象
+    - 409: 用户名已存在
     - 422: 请求参数验证失败
     """
     try:
-        return await service.create_agent(agent)
+        return await service.register_user(user_data)
     except IntegrityError as e:
-        # 处理数据库约束错误（如名称重复）
         if "UNIQUE constraint failed" in str(e) or "name" in str(e).lower():
             raise HTTPException(
-                status_code=409, 
-                detail=f"智能体名称 '{agent.name}' 已存在，请选择其他名称"
+                status_code=409,
+                detail=f"用户名 '{user_data.name}' 已存在，请选择其他用户名"
             )
         else:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"数据库错误: {str(e)}"
             )
     except Exception as e:
         raise HTTPException(
-            status_code=500, 
-            detail=f"创建智能体失败: {str(e)}"
+            status_code=500,
+            detail=f"注册失败: {str(e)}"
         )
 
 
-@router.get("/agents/{agent_id}", response_model=Agent)
-async def get_agent(agent_id: UUID, service: AgentService = Depends(get_agent_service)):
+@router.post("/auth/login", response_model=User)
+async def login(auth_data: UserAuth, service: UserService = Depends(get_user_service)):
     """
-    根据ID获取智能体信息
+    用户登录
     
     HTTP调用方式:
-    GET /agents/{agent_id}
+    POST /auth/login
+    Content-Type: application/json
+    Body: {
+        "name": "用户名",
+        "password": "密码"
+    }
     
     功能:
-    - 根据UUID获取智能体的详细信息
-    - 用于客户端从ID恢复智能体对象
-    
-    路径参数:
-    - agent_id: 智能体的UUID
+    - 验证用户名和密码
+    - 返回用户信息
     
     返回:
-    - 200: Agent对象，包含智能体信息
-    - 404: 智能体不存在
+    - 200: User对象
+    - 404: 用户不存在
+    - 401: 密码错误
+    - 422: 请求参数验证失败
+    """
+    try:
+        return await service.login_user(auth_data)
+    except ValueError as e:
+        error_msg = str(e)
+        if "密码错误" in error_msg:
+            raise HTTPException(status_code=401, detail=error_msg)
+        elif "不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/users/{user_id}", response_model=User)
+async def get_user(user_id: UUID, service: UserService = Depends(get_user_service)):
+    """
+    根据ID获取用户信息
+    
+    HTTP调用方式:
+    GET /users/{user_id}
+    
+    功能:
+    - 根据UUID获取用户的详细信息
+    - 用于客户端从 ID 恢复用户对象
+    
+    路径参数:
+    - user_id: 用户的UUID
+    
+    返回:
+    - 200: User对象，包含用户信息
+    - 404: 用户不存在
     - 422: UUID格式错误
     """
     try:
-        return await service.get_agent(agent_id)
+        return await service.get_user(user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/users/by-name/{name}", response_model=list[User])
+async def get_users_by_name(name: str, service: UserService = Depends(get_user_service)):
+    """
+    根据用户名获取用户信息（可能返回多个同名用户）
+    
+    HTTP调用方式:
+    GET /users/by-name/{name}
+    
+    功能:
+    - 根据用户名查询所有同名用户
+    - 用于客户端查找用户
+    
+    路径参数:
+    - name: 用户名
+    
+    返回:
+    - 200: User对象列表（可能为空）
+    """
+    return await service.get_users_by_name(name)
+
+
 @router.post("/chats", response_model=Chat)
-async def create_chat(chat: ChatCreate, agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def create_chat(chat: ChatCreate, user_id: UUID = Header(..., alias="X-User-ID"),
                       service: ChatService = Depends(get_chat_service)):
     """
     创建新的聊天房间
@@ -125,11 +204,11 @@ async def create_chat(chat: ChatCreate, agent_id: UUID = Header(..., alias="X-Ag
     HTTP调用方式:
     POST /chats
     Headers: {
-        "X-Agent-ID": "创建者智能体的UUID"
+        "X-User-ID": "创建者用户的UUID"
     }
     Content-Type: application/json
     Body: {
-        "type": "group", // 或 "private"
+        "type": "group", // 或 "direct"
         "name": "聊天房间名称",
         "members": ["成员UUID列表"]
     }
@@ -140,17 +219,21 @@ async def create_chat(chat: ChatCreate, agent_id: UUID = Header(..., alias="X-Ag
     - 只有创建者才能删除房间
     
     请求头:
-    - X-Agent-ID: 创建者的智能体ID
+    - X-User-ID: 创建者的用户ID
     
     返回:
     - 200: 成功创建的Chat对象
+    - 400: 私聊规则验证失败
     - 422: 请求参数验证失败
     """
-    return await service.create_chat(chat, agent_id)
+    try:
+        return await service.create_chat(chat, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/chats/{chat_id}")
-async def delete_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def delete_chat(chat_id: UUID, user_id: UUID = Header(..., alias="X-User-ID"),
                       service: ChatService = Depends(get_chat_service)):
     """
     删除指定的聊天房间（仅创建者可用）
@@ -178,7 +261,7 @@ async def delete_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent
     - 422: UUID格式错误
     """
     try:
-        success = await service.delete_chat(chat_id, agent_id)
+        success = await service.delete_chat(chat_id, user_id)
         if success:
             return {"status": "deleted"}
         else:
@@ -188,7 +271,7 @@ async def delete_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent
 
 
 @router.get("/chats", response_model=list[Chat])
-async def list_chats(agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def list_chats(user_id: UUID = Header(..., alias="X-User-ID"),
                      service: ChatService = Depends(get_chat_service)):
     """
     获取智能体参与的所有聊天房间列表
@@ -211,11 +294,11 @@ async def list_chats(agent_id: UUID = Header(..., alias="X-Agent-ID"),
     - 404: 智能体不存在
     - 422: UUID格式错误
     """
-    return await service.list_chats(agent_id)
+    return await service.list_chats(user_id)
 
 
 @router.get("/chats/{chat_id}", response_model=Chat)
-async def get_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def get_chat(chat_id: UUID, user_id: UUID = Header(..., alias="X-User-ID"),
                    service: ChatService = Depends(get_chat_service)):
     """
     获取指定聊天房间的详细信息
@@ -243,14 +326,14 @@ async def get_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-ID
     - 422: UUID格式错误
     """
     try:
-        return await service.get_chat(chat_id, agent_id)
+        return await service.get_chat(chat_id, user_id)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.get("/chats/{chat_id}/members", response_model=list[Agent])
+@router.get("/chats/{chat_id}/members", response_model=list[User])
 async def list_members(chat_id: UUID, service: ChatService = Depends(get_chat_service)):
     """
     获取指定聊天房间的所有成员列表
@@ -317,7 +400,7 @@ async def list_messages(
 
 
 @router.post("/chats/{chat_id}/join")
-async def join_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def join_chat(chat_id: UUID, user_id: UUID = Header(..., alias="X-User-ID"),
                     service: ChatService = Depends(get_chat_service)):
     """
     智能体加入指定的聊天房间
@@ -343,12 +426,12 @@ async def join_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-I
     - 404: 聊天房间或智能体不存在
     - 422: UUID格式错误
     """
-    await service.join_chat(chat_id, agent_id)
+    await service.join_chat(chat_id, user_id)
     return {"status": "joined"}
 
 
 @router.post("/chats/{chat_id}/leave")
-async def leave_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-ID"),
+async def leave_chat(chat_id: UUID, user_id: UUID = Header(..., alias="X-User-ID"),
                      service: ChatService = Depends(get_chat_service)):
     """
     退出指定的聊天房间
@@ -375,7 +458,7 @@ async def leave_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-
     - 404: 聊天房间或智能体不存在
     - 422: UUID格式错误
     """
-    success = await service.leave_chat(chat_id, agent_id)
+    success = await service.leave_chat(chat_id, user_id)
     if success:
         # 检查房间是否还存在（判断是普通退出还是删除）
         members = await service.list_members(chat_id)
@@ -387,11 +470,11 @@ async def leave_chat(chat_id: UUID, agent_id: UUID = Header(..., alias="X-Agent-
         return {"status": "failed", "error": "Chat or agent not found"}
 
 
-@router.delete("/chats/{chat_id}/members/{agent_id}")
+@router.delete("/chats/{chat_id}/members/{user_id}")
 async def remove_member(
         chat_id: UUID,
-        agent_id: UUID,
-        requester_id: UUID = Header(..., alias="X-Agent-ID"),
+        user_id: UUID,
+        requester_id: UUID = Header(..., alias="X-User-ID"),
         service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -423,7 +506,7 @@ async def remove_member(
     - 422: UUID格式错误
     """
     try:
-        success = await service.remove_member(chat_id, agent_id, requester_id)
+        success = await service.remove_member(chat_id, user_id, requester_id)
         if success:
             return {"status": "removed"}
         else:
@@ -434,11 +517,11 @@ async def remove_member(
         return {"error": str(e)}
 
 
-@router.post("/chats/{chat_id}/members/{agent_id}")
+@router.post("/chats/{chat_id}/members/{user_id}")
 async def add_member(
         chat_id: UUID,
-        agent_id: UUID,
-        requester_id: UUID = Header(..., alias="X-Agent-ID"),
+        user_id: UUID,
+        requester_id: UUID = Header(..., alias="X-User-ID"),
         service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -454,6 +537,7 @@ async def add_member(
     - 仅创建者可以添加新成员
     - 被添加的成员将能够看到聊天内容并参与对话
     - 如果成员已经在聊天中，操作将失败
+    - 私聊不能添加成员
     
     路径参数:
     - chat_id: 聊天房间ID
@@ -464,37 +548,40 @@ async def add_member(
     
     返回:
     - 200: {"status": "added"} 添加成功
+    - 400: {"error": "私聊不能添加成员"}
     - 403: {"error": "没有权限"} 非创建者试图添加成员
     - 409: {"status": "already_member"} 成员已经在聊天中
     - 404: 聊天房间或智能体不存在
     - 422: UUID格式错误
     """
     try:
-        success = await service.add_member(chat_id, agent_id, requester_id)
+        success = await service.add_member(chat_id, user_id, requester_id)
         if success:
             return {"status": "added"}
         else:
             return {"status": "already_member", "error": "Agent already in chat or not found"}
     except PermissionError as e:
         return {"error": str(e)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.websocket("/ws/{agent_id}")
-async def websocket_endpoint(websocket: WebSocket, agent_id: str):
+@router.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """
     WebSocket 端点 - 实时通信
     
     WebSocket 连接方式:
-    ws://localhost:8000/ws/{agent_id}
+    ws://localhost:8000/ws/{user_id}
     
     功能:
-    - 建立 Agent 的 WebSocket 连接
+    - 建立 User 的 WebSocket 连接
     - 处理实时消息收发
     - 管理在线状态
     - 处理离线消息
     
     路径参数:
-    - agent_id: 智能体的UUID
+    - user_id: 用户的UUID
     
     消息格式:
     客户端发送消息格式:
@@ -521,4 +608,4 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
     - 客户端现在通过 WebSocket 发送消息，而不是 HTTP 请求
     - 支持实时消息推送和离线消息处理
     """
-    await websocket_handler.handle_connection(websocket, agent_id)
+    await websocket_handler.handle_connection(websocket, user_id)

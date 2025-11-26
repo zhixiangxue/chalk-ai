@@ -11,7 +11,7 @@ from typing import Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .config import get_settings
-from .database import Database
+from .db import Database
 from .models import (
     Message,
     WSMessageFactory, WSInboundMessage,
@@ -33,48 +33,48 @@ class WebSocketHandler:
     
     def __init__(self):
         self.settings = get_settings()
-        self.active_subscribers: Dict[str, asyncio.Task] = {}  # agent_id -> subscriber_task
+        self.active_subscribers: Dict[str, asyncio.Task] = {}  # user_id -> subscriber_task
     
-    async def handle_connection(self, websocket: WebSocket, agent_id: str):
+    async def handle_connection(self, websocket: WebSocket, user_id: str):
         """
         处理 WebSocket 连接的完整生命周期
         
         Args:
             websocket: WebSocket 连接对象
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
-        # 验证 agent_id 的有效性
-        if not await self._validate_agent(agent_id):
-            logger.warning(f"无效的 agent_id: {agent_id}")
-            await websocket.close(code=4001, reason="Invalid agent_id")
+        # 验证 user_id 的有效性
+        if not await self._validate_user(user_id):
+            logger.warning(f"无效的 user_id: {user_id}")
+            await websocket.close(code=4001, reason="Invalid user_id")
             return
         
         # 建立连接
-        if not await connection_manager.connect(agent_id, websocket):
-            logger.error(f"无法建立 WebSocket 连接: {agent_id}")
+        if not await connection_manager.connect(user_id, websocket):
+            logger.error(f"无法建立 WebSocket 连接: {user_id}")
             return
         
         try:
             # 发送连接确认消息
-            await self._send_connection_ack(agent_id)
+            await self._send_connection_ack(user_id)
             
             # 补偿推送离线期间的消息
-            await self._handle_offline_messages(agent_id)
+            await self._handle_offline_messages(user_id)
             
             # 启动即时消息推送任务
             instant_message_task = asyncio.create_task(
-                self._handle_instant_messages(agent_id)
+                self._handle_instant_messages(user_id)
             )
-            self.active_subscribers[agent_id] = instant_message_task
+            self.active_subscribers[user_id] = instant_message_task
             
             # 启动心跳任务定期刷新在线状态
             heartbeat_task = asyncio.create_task(
-                self._heartbeat_loop(agent_id)
+                self._heartbeat_loop(user_id)
             )
             
             try:
                 # 启动客户端消息接收循环
-                await self._handle_client_messages(websocket, agent_id)
+                await self._handle_client_messages(websocket, user_id)
             finally:
                 # 取消心跳任务
                 heartbeat_task.cancel()
@@ -84,19 +84,19 @@ class WebSocketHandler:
                     pass
             
         except WebSocketDisconnect:
-            logger.info(f"Agent {agent_id} WebSocket 连接断开")
+            logger.info(f"User {user_id} WebSocket 连接断开")
         except Exception as e:
-            logger.error(f"WebSocket 处理出错 {agent_id}: {str(e)}", exc_info=True)
+            logger.error(f"WebSocket 处理出错 {user_id}: {str(e)}", exc_info=True)
         finally:
             # 清理资源
-            await self._cleanup_connection(agent_id)
+            await self._cleanup_connection(user_id)
     
-    async def _validate_agent(self, agent_id: str) -> bool:
+    async def _validate_user(self, user_id: str) -> bool:
         """
-        验证 agent_id 是否有效
+        验证 user_id 是否有效
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
             
         Returns:
             bool: 是否有效
@@ -106,34 +106,34 @@ class WebSocketHandler:
             db = Database()
             await db.connect()
             try:
-                await db.get_agent(UUID(agent_id))
+                await db.get_user(UUID(user_id))
                 return True
             except (ValueError, TypeError):
                 return False
             finally:
                 await db.disconnect()
         except Exception as e:
-            logger.error(f"验证 agent_id 失败: {str(e)}")
+            logger.error(f"验证 user_id 失败: {str(e)}")
             return False
     
-    async def _send_connection_ack(self, agent_id: str):
+    async def _send_connection_ack(self, user_id: str):
         """
         发送连接确认消息
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
-        ack_message = ServerConnectedMessage(agent_id=agent_id)
+        ack_message = ServerConnectedMessage(user_id=user_id)
         
-        await connection_manager.send_outbound_message(agent_id, ack_message)
-        logger.debug(f"连接确认消息已发送: {agent_id}")
+        await connection_manager.send_outbound_message(user_id, ack_message)
+        logger.debug(f"连接确认消息已发送: {user_id}")
     
-    async def _heartbeat_loop(self, agent_id: str):
+    async def _heartbeat_loop(self, user_id: str):
         """
-        心跳循环，定期刷新Agent在线状态
+        心跳循环，定期刷新用户在线状态
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
         redis_client = RedisClient(self.settings.redis_url)
         
@@ -144,28 +144,28 @@ class WebSocketHandler:
                 try:
                     # 每30秒刷新一次在线状态
                     await asyncio.sleep(30)
-                    await redis_client.set_agent_online(agent_id)
-                    logger.debug(f"已刷新 {agent_id} 在线状态")
+                    await redis_client.set_user_online(user_id)
+                    logger.debug(f"已刷新 {user_id} 在线状态")
                     
                 except asyncio.CancelledError:
-                    logger.debug(f"Agent {agent_id} 心跳任务已取消")
+                    logger.debug(f"User {user_id} 心跳任务已取消")
                     break
                 except Exception as e:
-                    logger.warning(f"刷新在线状态失败 {agent_id}: {str(e)}")
+                    logger.warning(f"刷新在线状态失败 {user_id}: {str(e)}")
                     await asyncio.sleep(30)  # 出错后等待再试
                     
         finally:
             await redis_client.disconnect()
             
-    async def _handle_offline_messages(self, agent_id: str):
+    async def _handle_offline_messages(self, user_id: str):
         """
         补偿推送离线期间的消息
         
-        当 Agent 重新连接时，补偿之前未实时推送的离线消息
+        当用户重新连接时，补偿之前未实时推送的离线消息
         现在使用统一的 message_id 格式，与 instant 消息处理流程一致
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
         try:
             redis_client = RedisClient(self.settings.redis_url)
@@ -174,10 +174,10 @@ class WebSocketHandler:
             
             try:
                 # 获取离线消息 ID 列表（现在格式与 instant 一致）
-                offline_messages = await redis_client.get_offline_message_ids(agent_id)
+                offline_messages = await redis_client.get_offline_message_ids(user_id)
                 
                 if offline_messages:
-                    logger.info(f"为 {agent_id} 发送 {len(offline_messages)} 条离线消息")
+                    logger.info(f"为 {user_id} 发送 {len(offline_messages)} 条离线消息")
                     
                     # 使用统一的发送方法处理
                     for msg_data in offline_messages:
@@ -186,36 +186,36 @@ class WebSocketHandler:
                             # 获取消息并发送
                             message = await self._get_message_by_id(message_id)
                             ws_message = ServerGeneralMessage(message=message)
-                            await connection_manager.send_outbound_message(agent_id, ws_message)
+                            await connection_manager.send_outbound_message(user_id, ws_message)
                     
                     # 清理已发送的离线消息
-                    await redis_client.clear_offline_message_ids(agent_id)
+                    await redis_client.clear_offline_message_ids(user_id)
                 
             finally:
                 await redis_client.disconnect()
                 
         except Exception as e:
-            logger.error(f"发送离线消息失败 {agent_id}: {str(e)}")
+            logger.error(f"发送离线消息失败 {user_id}: {str(e)}")
     
-    async def _handle_instant_messages(self, agent_id: str):
+    async def _handle_instant_messages(self, user_id: str):
         """
         处理即时消息推送任务
         
         这是一个后台任务，专门负责接收 Huey 处理后的即时消息
-        并通过 WebSocket 立即推送给在线的 Agent
+        并通过 WebSocket 立即推送给在线的用户
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
         redis_client = RedisClient(self.settings.redis_url)
         
         try:
             await redis_client.connect()
             
-            # 订阅该 agent 的即时消息频道和通知频道
+            # 订阅该用户的即时消息频道和通知频道
             channels = [
-                RedisChannels.agent_inbox_instant(agent_id),
-                RedisChannels.agent_notifications(agent_id)
+                RedisChannels.user_inbox_instant(user_id),
+                RedisChannels.user_notifications(user_id)
             ]
             
             await redis_client.subscribe_channels(channels)
@@ -233,27 +233,27 @@ class WebSocketHandler:
                             # 根据 message_id 从数据库查询完整消息并发送
                             message = await self._get_message_by_id(message_id)
                             ws_message = ServerGeneralMessage(message=message)
-                            await connection_manager.send_outbound_message(agent_id, ws_message)
+                            await connection_manager.send_outbound_message(user_id, ws_message)
                         else:
                             logger.warning(f"即时消息缺少 message_id: {message_data}")
                         
                     except (json.JSONDecodeError, KeyError) as e:
                         logger.warning(f"无效的即时消息格式: {str(e)}")
                     except Exception as e:
-                        logger.warning(f"处理即时消息失败 {agent_id}: {str(e)}")
+                        logger.warning(f"处理即时消息失败 {user_id}: {str(e)}")
                         # 处理失败可能是连接已断开，停止推送
                         break
                         
         except Exception as e:
-            logger.error(f"即时消息订阅失败 {agent_id}: {str(e)}")
+            logger.error(f"即时消息订阅失败 {user_id}: {str(e)}")
         finally:
             try:
                 await redis_client.disconnect()
-                logger.info(f"Agent {agent_id} 即时消息订阅已关闭")
+                logger.info(f"User {user_id} 即时消息订阅已关闭")
             except:
                 pass
     
-    async def _handle_client_messages(self, websocket: WebSocket, agent_id: str):
+    async def _handle_client_messages(self, websocket: WebSocket, user_id: str):
         """
         处理客户端发送的消息循环
         
@@ -262,7 +262,7 @@ class WebSocketHandler:
         
         Args:
             websocket: WebSocket 连接对象
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
         try:
             while True:
@@ -271,23 +271,23 @@ class WebSocketHandler:
                 
                 try:
                     message_data = json.loads(data)
-                    await self._handle_client_message(agent_id, message_data)
+                    await self._handle_client_message(user_id, message_data)
                     
                 except json.JSONDecodeError:
                     logger.warning(f"收到无效的 JSON 消息: {data}")
-                    await connection_manager.send_message(agent_id, {
+                    await connection_manager.send_message(user_id, {
                         "type": "error",
                         "message": "Invalid JSON format"
                     })
                     
         except WebSocketDisconnect:
-            logger.info(f"Agent {agent_id} 主动断开连接")
+            logger.info(f"User {user_id} 主动断开连接")
             raise
         except Exception as e:
-            logger.error(f"客户端消息处理出错 {agent_id}: {str(e)}")
+            logger.error(f"客户端消息处理出错 {user_id}: {str(e)}")
             raise
     
-    async def _handle_client_message(self, agent_id: str, message_data: Dict[str, Any]):
+    async def _handle_client_message(self, user_id: str, message_data: Dict[str, Any]):
         """
         处理来自客户端的消息（DDD 设计，使用类型安全的模型）
         
@@ -298,39 +298,39 @@ class WebSocketHandler:
         注意：加入/离开聊天等操作应通过 HTTP API 完成，不应通过 WebSocket
         
         Args:
-            agent_id: 发送者智能体ID
+            user_id: 发送者用户ID
             message_data: 原始消息数据
         """
         try:
             # 使用工厂解析入站消息
             inbound_message: WSInboundMessage = WSMessageFactory.parse_inbound_message(message_data)
-            logger.debug(f"收到来自 {agent_id} 的消息: {inbound_message.type}")
+            logger.debug(f"收到来自 {user_id} 的消息: {inbound_message.type}")
             
             # 根据消息类型分发处理
             if isinstance(inbound_message, ClientGeneralMessage):
-                await self._process_client_message(agent_id, inbound_message)
+                await self._process_client_message(user_id, inbound_message)
             elif isinstance(inbound_message, ClientPingMessage):
-                await self._process_client_ping(agent_id, inbound_message)
+                await self._process_client_ping(user_id, inbound_message)
             else:
                 logger.warning(f"无法处理的消息类型: {inbound_message.type}")
                 error_msg = ServerErrorMessage(message=f"Unsupported message type: {inbound_message.type}")
-                await connection_manager.send_outbound_message(agent_id, error_msg)
+                await connection_manager.send_outbound_message(user_id, error_msg)
                 
         except ValueError as e:
-            logger.error(f"消息解析失败 {agent_id}: {str(e)}")
+            logger.error(f"消息解析失败 {user_id}: {str(e)}")
             error_msg = ServerErrorMessage(message=f"Invalid message format: {str(e)}")
-            await connection_manager.send_outbound_message(agent_id, error_msg)
+            await connection_manager.send_outbound_message(user_id, error_msg)
         except Exception as e:
-            logger.error(f"处理客户端消息失败 {agent_id}: {str(e)}")
+            logger.error(f"处理客户端消息失败 {user_id}: {str(e)}")
             error_msg = ServerErrorMessage(message=f"Failed to process message: {str(e)}")
-            await connection_manager.send_outbound_message(agent_id, error_msg)
+            await connection_manager.send_outbound_message(user_id, error_msg)
     
-    async def _process_client_message(self, agent_id: str, message: ClientGeneralMessage):
+    async def _process_client_message(self, user_id: str, message: ClientGeneralMessage):
         """
         处理客户端发送消息请求
         
         Args:
-            agent_id: 发送者智能体ID
+            user_id: 发送者用户ID
             message: 客户端消息请求
         """
         try:
@@ -341,7 +341,7 @@ class WebSocketHandler:
             db = Database()
             await db.connect()
             try:
-                stored_message = await db.store_message(message_create, UUID(agent_id))
+                stored_message = await db.store_message(message_create, UUID(user_id))
             finally:
                 await db.disconnect()
             
@@ -350,32 +350,32 @@ class WebSocketHandler:
                 message_id=str(stored_message.id),
                 timestamp=stored_message.timestamp.isoformat()
             )
-            await connection_manager.send_outbound_message(agent_id, confirmation)
+            await connection_manager.send_outbound_message(user_id, confirmation)
             
             # 异步分发消息给其他成员（使用位置参数）
             distribute_message(
                 str(stored_message.id),
                 str(stored_message.chat_id),
-                str(stored_message.sender_id)
+                str(stored_message.sender.id)
             )
             
-            logger.info(f"消息已处理: {stored_message.id} from {agent_id}")
+            logger.info(f"消息已处理: {stored_message.id} from {user_id}")
             
         except Exception as e:
             logger.error(f"处理发送消息失败: {str(e)}")
             error_msg = ServerErrorMessage(message=f"Failed to send message: {str(e)}")
-            await connection_manager.send_outbound_message(agent_id, error_msg)
+            await connection_manager.send_outbound_message(user_id, error_msg)
     
-    async def _process_client_ping(self, agent_id: str, message: ClientPingMessage):
+    async def _process_client_ping(self, user_id: str, message: ClientPingMessage):
         """
         处理客户端心跳 ping 消息
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
             message: ping 消息模型
         """
         pong_response = ServerPongMessage(timestamp=asyncio.get_event_loop().time())
-        await connection_manager.send_outbound_message(agent_id, pong_response)
+        await connection_manager.send_outbound_message(user_id, pong_response)
     
     async def _get_message_by_id(self, message_id: str) -> Message:
         """
@@ -394,28 +394,28 @@ class WebSocketHandler:
         finally:
             await db.disconnect()
 
-    async def _cleanup_connection(self, agent_id: str):
+    async def _cleanup_connection(self, user_id: str):
         """
         清理连接相关资源
         
         Args:
-            agent_id: 智能体ID
+            user_id: 用户ID
         """
         # 停止 Redis 订阅任务
-        if agent_id in self.active_subscribers:
-            subscriber_task = self.active_subscribers[agent_id]
+        if user_id in self.active_subscribers:
+            subscriber_task = self.active_subscribers[user_id]
             if not subscriber_task.done():
                 subscriber_task.cancel()
                 try:
                     await subscriber_task
                 except asyncio.CancelledError:
                     pass
-            del self.active_subscribers[agent_id]
+            del self.active_subscribers[user_id]
         
         # 断开连接管理器中的连接
-        await connection_manager.disconnect(agent_id)
+        await connection_manager.disconnect(user_id)
         
-        logger.info(f"Agent {agent_id} 连接清理完成")
+        logger.info(f"User {user_id} 连接清理完成")
 
 
 # 全局 WebSocket 处理器实例

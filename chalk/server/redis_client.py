@@ -97,14 +97,14 @@ class RedisClient:
             print(f"Warning: Redis listen error: {e}")
             return
     
-    # ======== Agent 在线状态管理 ========
+    # ======== 用户在线状态管理 ========
     
-    async def set_agent_online(self, agent_id: str, ttl: int = 3600) -> bool:
+    async def set_user_online(self, user_id: str, ttl: int = 3600) -> bool:
         """
-        设置 Agent 在线状态
+        设置用户在线状态
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             ttl: 过期时间（秒），默认1小时
             
         Returns:
@@ -114,18 +114,18 @@ class RedisClient:
             return False
         
         try:
-            await self.redis.setex(RedisChannels.agent_online_status(agent_id), ttl, "1")
+            await self.redis.setex(RedisChannels.user_online_status(user_id), ttl, "1")
             return True
         except Exception as e:
-            print(f"Warning: Failed to set agent online status: {e}")
+            print(f"Warning: Failed to set user online status: {e}")
             return False
     
-    async def set_agent_offline(self, agent_id: str) -> bool:
+    async def set_user_offline(self, user_id: str) -> bool:
         """
-        清除 Agent 在线状态
+        清除用户在线状态
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             
         Returns:
             bool: 是否清除成功
@@ -134,18 +134,18 @@ class RedisClient:
             return False
         
         try:
-            await self.redis.delete(RedisChannels.agent_online_status(agent_id))
+            await self.redis.delete(RedisChannels.user_online_status(user_id))
             return True
         except Exception as e:
-            print(f"Warning: Failed to clear agent online status: {e}")
+            print(f"Warning: Failed to clear user online status: {e}")
             return False
     
-    async def is_agent_online(self, agent_id: str) -> bool:
+    async def is_user_online(self, user_id: str) -> bool:
         """
-        检查 Agent 是否在线
+        检查用户是否在线
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             
         Returns:
             bool: 是否在线
@@ -154,20 +154,20 @@ class RedisClient:
             return False
         
         try:
-            result = await self.redis.exists(RedisChannels.agent_online_status(agent_id))
+            result = await self.redis.exists(RedisChannels.user_online_status(user_id))
             return bool(result)
         except Exception as e:
-            print(f"Warning: Failed to check agent online status: {e}")
+            print(f"Warning: Failed to check user online status: {e}")
             return False
     
     # ======== 简化的离线消息存储方法 ========
     
-    async def store_offline_message_id(self, agent_id: str, message_id: str, chat_id: str, timestamp: str) -> bool:
+    async def store_offline_message_id(self, user_id: str, message_id: str, chat_id: str, timestamp: str) -> bool:
         """
         存储离线消息 ID（统一格式，与 instant 消息保持一致）
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             message_id: 消息 ID
             chat_id: 聊天 ID  
             timestamp: 时间戳
@@ -180,7 +180,7 @@ class RedisClient:
         
         try:
             # 使用 Redis List 存储离线消息 ID（与 instant 格式一致）
-            offline_key = RedisChannels.agent_inbox_offline(agent_id)
+            offline_key = RedisChannels.user_inbox_offline(user_id)
             message_data = {
                 "message_id": message_id,
                 "chat_id": chat_id,
@@ -201,12 +201,12 @@ class RedisClient:
             print(f"Warning: Failed to store offline message: {e}")
             return False
     
-    async def get_offline_message_ids(self, agent_id: str, limit: int = 100) -> List[Dict]:
+    async def get_offline_message_ids(self, user_id: str, limit: int = 100) -> List[Dict]:
         """
-        获取 Agent 的离线消息 ID 列表（统一格式）
+        获取用户的离线消息 ID 列表（统一格式）
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             limit: 限制数量
             
         Returns:
@@ -216,7 +216,7 @@ class RedisClient:
             return []
         
         try:
-            offline_key = RedisChannels.agent_inbox_offline(agent_id)
+            offline_key = RedisChannels.user_inbox_offline(user_id)
             
             # 获取最新的 limit 条消息
             message_strings = await self.redis.lrange(offline_key, 0, limit - 1)
@@ -234,12 +234,12 @@ class RedisClient:
             print(f"Warning: Failed to get offline message IDs: {e}")
             return []
     
-    async def clear_offline_message_ids(self, agent_id: str) -> bool:
+    async def clear_offline_message_ids(self, user_id: str) -> bool:
         """
-        清空 Agent 的离线消息 ID（统一命名）
+        清空用户的离线消息 ID（统一命名）
         
         Args:
-            agent_id: Agent ID
+            user_id: 用户 ID
             
         Returns:
             bool: 是否清空成功
@@ -248,7 +248,7 @@ class RedisClient:
             return False
         
         try:
-            offline_key = RedisChannels.agent_inbox_offline(agent_id)
+            offline_key = RedisChannels.user_inbox_offline(user_id)
             await self.redis.delete(offline_key)
             return True
         except Exception as e:

@@ -210,3 +210,5 @@ __marimo__/
 .idea/
 playground/
 *.db
+.qoder/
+test*.py

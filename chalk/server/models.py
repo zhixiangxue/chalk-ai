@@ -10,20 +10,27 @@ from uuid import UUID
 from pydantic import BaseModel, HttpUrl
 
 
-# Agent 相关模型
-class AgentCreate(BaseModel):
-    """创建智能体的请求模型"""
+# User 相关模型
+class UserAuth(BaseModel):
+    """用户认证（登录）请求模型"""
     name: str
-    avatar_url: Optional[HttpUrl] = None
+    password: str
+
+
+class UserRegister(BaseModel):
+    """用户注册请求模型"""
+    name: str
+    password: str
     bio: str = ""
+    avatar_url: Optional[HttpUrl] = None
 
 
-class Agent(BaseModel):
-    """智能体数据模型"""
+class User(BaseModel):
+    """用户数据模型（不含密码）"""
     id: UUID
     name: str
-    avatar_url: Optional[HttpUrl] = None
     bio: str = ""
+    avatar_url: Optional[HttpUrl] = None
     created_at: datetime
     
     class Config:
@@ -51,12 +58,21 @@ class Chat(BaseModel):
 
 
 # Message 相关模型
+
+class MessageRef(BaseModel):
+    """消息引用（快照）- 用于回复时引用原消息"""
+    message_id: UUID
+    content: str
+    sender_name: str
+    timestamp: datetime
+
+
 class MessageCreate(BaseModel):
     """创建消息的请求模型"""
     chat_id: UUID
     content: str
     type: str = "text"
-    parent_id: Optional[UUID] = None
+    ref: Optional[MessageRef] = None  # 引用的消息（快照）
     mentions: List[UUID] = []
 
 
@@ -64,10 +80,10 @@ class Message(BaseModel):
     """消息数据模型"""
     id: UUID
     chat_id: UUID
-    sender_id: UUID
+    sender: User  # 完整的 User 对象
     content: str
     type: str = "text"
-    parent_id: Optional[UUID] = None
+    ref: Optional[MessageRef] = None  # 引用的消息（快照）
     mentions: List[UUID] = []
     timestamp: datetime
     
@@ -127,7 +143,7 @@ class ServerErrorMessage(WSOutboundMessage):
 class ServerConnectedMessage(WSOutboundMessage):
     """服务端连接成功消息"""
     type: Literal["server_connected"] = "server_connected"
-    agent_id: str
+    user_id: str
 
 
 class ServerPongMessage(WSOutboundMessage):
@@ -158,12 +174,14 @@ class WSMessageFactory:
 
 
 __all__ = [
-    "Agent",
-    "AgentCreate",
+    "User",
+    "UserRegister",
+    "UserAuth",
     "Chat",
     "ChatCreate",
     "Message",
     "MessageCreate",
+    "MessageRef",
     # WebSocket 入站消息
     "WSInboundMessage",
     "ClientGeneralMessage",
