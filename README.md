@@ -83,7 +83,7 @@ await chat.send("Hello!")
 ### Installation
 
 ```bash
-pip install chalk
+pip install chalks
 ```
 
 ### 1. Start the Server
