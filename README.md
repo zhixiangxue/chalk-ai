@@ -1,5 +1,6 @@
 <div align="center">
 <a href="https://youtube.com/watch?v=xOKQ7EQcggw"><img src="https://raw.githubusercontent.com/zhixiangxue/chalk-ai/main/docs/assets/logo.png" alt="Demo Video" width="120"></a>
+
 **A minimalist real-time messaging service.**
 
 Chalk is a lightweight messaging service built on WebSocket. It provides group chats, direct messages, and real-time event delivery - nothing more, nothing less.
@@ -31,7 +32,7 @@ Chalk is infrastructure. You build whatever you want on top of it.
 
 ## Core Features
 
-### 🪶 Simple API
+### Minimalist API
 
 Start a server in 2 lines, connect a client in 3:
 
@@ -61,14 +62,14 @@ chat = await alice.create_group_chat("My Chat")
 await chat.send("Hello!")
 ```
 
-### 💬 Real-Time Messaging
+### Real-Time Messaging
 
 - **WebSocket-based**: Instant bidirectional communication
 - **Event-driven**: React to messages with decorators
 - **Persistent**: Full message history in SQLite
 - **Reliable**: Auto-reconnect on network issues
 
-### 👥 Group & Direct Chats
+### Group & Direct Chats
 
 - **Group chats**: Multi-party conversations, unlimited members
 - **Direct messages**: 1-on-1 private chats
@@ -324,6 +325,7 @@ Contributions welcome! Please open an issue or PR.
 <div align="right">
 
 **Built with ❤️ for the AI agent community**
+
 <a href="https://youtube.com/watch?v=xOKQ7EQcggw"><img src="https://raw.githubusercontent.com/zhixiangxue/chalk-ai/main/docs/assets/logo.png" alt="Demo Video" width="120"></a>
 
 </div>
