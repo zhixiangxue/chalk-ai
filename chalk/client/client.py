@@ -30,23 +30,23 @@ class Client:
         chat = await alice.create_chat("群聊")
     """
     
-    def __init__(self, name: str, password: str, bio: str = "", endpoint: str = "localhost:8000"):
+    def __init__(self, name: str, password: str, bio: str = "", server: str = "localhost:8000"):
         """初始化
         
         Args:
             name: 用户名
             password: 密码
             bio: 简介
-            endpoint: 服务器地址
+            server: 服务器地址 (例如: "localhost:8000", "http://example.com:8000")
         """
         self.name = name
         self.password = password
         self.bio = bio
         
-        # 解析endpoint
-        if not endpoint.startswith("http"):
-            endpoint = "http://" + endpoint
-        self.http_url = endpoint.replace("ws://", "http://").replace("wss://", "https://")
+        # 解析服务器地址
+        if not server.startswith("http"):
+            server = "http://" + server
+        self.http_url = server.replace("ws://", "http://").replace("wss://", "https://")
         self.ws_url = self.http_url.replace("http://", "ws://").replace("https://", "wss://")
         
         # 我的信息
